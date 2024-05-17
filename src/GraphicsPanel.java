@@ -16,6 +16,10 @@ public class GraphicsPanel extends JPanel implements KeyListener, MouseListener,
     private Timer timer;
     private int time;
     private JButton reset;
+    private JButton pauseButton;
+    private boolean isUnderwater;
+    private boolean isPaused;
+
     public GraphicsPanel(String name) {
         try {
             background = ImageIO.read(new File("src/background.png"));
@@ -24,19 +28,29 @@ public class GraphicsPanel extends JPanel implements KeyListener, MouseListener,
             System.out.println(e.getMessage());
         }
         player = new Player("src/marioleft.png", "src/marioright.png", name);
-        if (player.getScore() >= 10) {
-            player = new Player("src/mariofrogleft.png", "src/mariofrogright.png", name);
-        }
         coins = new ArrayList<>();
         pressedKeys = new boolean[128];
         time = 0;
+        isUnderwater = false;
+        isPaused = false;
         timer = new Timer(1000, this); // this Timer will call the actionPerformed interface method every 1000ms = 1 second
         timer.start();
-        reset =  new JButton("Reset");
+
+        reset = new JButton("Reset");
         reset.setFocusable(false);
+        reset.addActionListener(this);
+
+        pauseButton = new JButton("Pause");
+        pauseButton.setFocusable(false);
+        pauseButton.addActionListener(this);
+
+        setLayout(null); // Use null layout to set absolute positions
+        reset.setBounds(20, 80, 100, 30);
+        pauseButton.setBounds(140, 80, 100, 30);
 
         add(reset);
-        reset.addActionListener(this);
+        add(pauseButton);
+
         addKeyListener(this);
         addMouseListener(this);
         setFocusable(true); // this line of code + one below makes this panel active for keylistener events
@@ -46,91 +60,107 @@ public class GraphicsPanel extends JPanel implements KeyListener, MouseListener,
     @Override
     public void paintComponent(Graphics g) {
         super.paintComponent(g);  // just do this
-        g.drawImage(background, 0, 0, null);  // the order that things get "painted" matter; we put background down first
-        g.drawImage(player.getPlayerImage(), player.getxCoord(), player.getyCoord(), null);
 
-        // this loop does two things:  it draws each Coin that gets placed with mouse clicks,
-        // and it also checks if the player has "intersected" (collided with) the Coin, and if so,
-        // the score goes up and the Coin is removed from the arraylist
-        for (int i = 0; i < coins.size(); i++) {
-            Coin coin = coins.get(i);
-            g.drawImage(coin.getImage(), coin.getxCoord(), coin.getyCoord(), null); // draw Coin
-            if (player.playerRect().intersects(coin.coinRect())) { // check for collision
-                player.collectCoin();
-                coins.remove(i);
-                i--;
-            }
+        if (isUnderwater) {
+            g.drawImage(background2, 0, 0, null);  // draw underwater background
+        } else {
+            g.drawImage(background, 0, 0, null);  // draw regular background
         }
 
-        // draw score
+        g.drawImage(player.getPlayerImage(), player.getxCoord(), player.getyCoord(), null);
+
+        for (Coin coin : coins) {
+            g.drawImage(coin.getImage(), coin.getxCoord(), coin.getyCoord(), null);
+        }
+
         g.setFont(new Font("Courier New", Font.BOLD, 24));
         g.drawString(player.getName() + "'s Score: " + player.getScore(), 20, 40);
         g.drawString("Time: " + time, 20, 70);
-        reset.setLocation(20,80);
 
-        // player moves left (A)
-        if (pressedKeys[65]) {
-            player.faceLeft();
-            player.moveLeft();
+        if (isPaused) {
+            g.setFont(new Font("Arial", Font.BOLD, 48));
+            g.setColor(Color.RED);
+            g.drawString("PAUSED", getWidth() / 2 - 100, getHeight() / 2);
         }
 
-        // player moves right (D)
-        if (pressedKeys[68]) {
-            player.faceRight();
-            player.moveRight();
-        }
+        if (!isPaused) {
+            if (pressedKeys[65]) {
+                player.faceLeft();
+                player.moveLeft();
+            }
+            if (pressedKeys[68]) {
+                player.faceRight();
+                player.moveRight();
+            }
+            if (pressedKeys[87]) {
+                player.moveUp();
+            }
+            if (pressedKeys[83]) {
+                player.moveDown();
+            }
 
-        // player moves up (W)
-        if (pressedKeys[87]) {
-            player.moveUp();
-        }
+            for (int i = 0; i < coins.size(); i++) {
+                Coin coin = coins.get(i);
+                if (player.playerRect().intersects(coin.coinRect())) { // check for collision
+                    player.collectCoin();
+                    coins.remove(i);
+                    i--;
+                }
+            }
 
-        // player moves down (S)
-        if (pressedKeys[83]) {
-            player.moveDown();
+            if (player.getScore() >= 10 && !isUnderwater) {
+                enterUnderwaterLevel();
+            }
         }
+    }
 
-        if (player.getScore() >= 10) {
-            removeAll();
-            g.drawImage(background2, 0, 0, null);  // the order that things get "painted" matter; we put background down first
-            g.drawImage(player.getPlayerImage(), player.getxCoord(), player.getyCoord(), null);
-            g.setFont(new Font("Courier New", Font.BOLD, 24));
-            g.drawString(player.getName() + "'s Score: " + player.getScore(), 20, 40);
-            g.drawString("Time: " + time, 20, 70);
-            reset.setLocation(20,80);
+    private void enterUnderwaterLevel() {
+        isUnderwater = true;
+        try {
+            System.out.println("Entering underwater level.");
+            player.setLeftImage("src/mariofrogleft.png");
+            player.setRightImage("src/mariofrogright.png");
+            System.out.println("Player images changed to frog Mario.");
+        } catch (IOException e) {
+            System.out.println("Error loading frog Mario images: " + e.getMessage());
         }
+        revalidate();
+        repaint();
     }
 
     // ----- KeyListener interface methods -----
     public void keyTyped(KeyEvent e) { } // unimplemented
 
     public void keyPressed(KeyEvent e) {
-        // see this for all keycodes: https://stackoverflow.com/questions/15313469/java-keyboard-keycodes-list
-        // A = 65, D = 68, S = 83, W = 87, left = 37, up = 38, right = 39, down = 40, space = 32, enter = 10
-        int key = e.getKeyCode();
-        pressedKeys[key] = true;
+        if (!isPaused) {
+            int key = e.getKeyCode();
+            pressedKeys[key] = true;
+        }
     }
 
     public void keyReleased(KeyEvent e) {
-        int key = e.getKeyCode();
-        pressedKeys[key] = false;
+        if (!isPaused) {
+            int key = e.getKeyCode();
+            pressedKeys[key] = false;
+        }
     }
 
     // ----- MouseListener interface methods -----
-    public void mouseClicked(MouseEvent e) { }  // unimplemented; if you move your mouse while clicking,
-    // this method isn't called, so mouseReleased is best
+    public void mouseClicked(MouseEvent e) { }  // unimplemented
 
     public void mousePressed(MouseEvent e) { } // unimplemented
 
     public void mouseReleased(MouseEvent e) {
-        if (e.getButton() == MouseEvent.BUTTON1) {  // left mouse click
-            Point mouseClickLocation = e.getPoint();
-            Coin coin = new Coin(mouseClickLocation.x, mouseClickLocation.y);
-            coins.add(coin);
-        } else {
-            Point mouseClickLocation = e.getPoint();
-            if (player.playerRect().contains(mouseClickLocation)) {
-                player.turn();
+        if (!isPaused) {
+            if (e.getButton() == MouseEvent.BUTTON1) {  // left mouse click
+                Point mouseClickLocation = e.getPoint();
+                Coin coin = new Coin(mouseClickLocation.x, mouseClickLocation.y);
+                coins.add(coin);
+            } else {
+                Point mouseClickLocation = e.getPoint();
+                if (player.playerRect().contains(mouseClickLocation)) {
+                    player.turn();
+                }
             }
         }
     }
@@ -142,10 +172,33 @@ public class GraphicsPanel extends JPanel implements KeyListener, MouseListener,
     // ACTIONLISTENER INTERFACE METHODS: used for buttons AND timers!
     public void actionPerformed(ActionEvent e) {
         if (e.getSource() instanceof Timer) {
-            time++;
-        } else if (e.getSource() instanceof JButton) {
+            if (!isPaused) {
+                time++;
+            }
+        } else if (e.getSource() == reset) {
             player.setScore(0);
             player.setCoord(50, 435);
+            isUnderwater = false;
+            try {
+                player.setLeftImage("src/marioleft.png");
+                player.setRightImage("src/marioright.png");
+            } catch (IOException ex) {
+                System.out.println(ex.getMessage());
+            }
+            revalidate();
+            repaint();
+        } else if (e.getSource() == pauseButton) {
+            if (isPaused) {
+                pauseButton.setText("Pause");
+                timer.start();
+                isPaused = false;
+            } else {
+                pauseButton.setText("Resume");
+                timer.stop();
+                isPaused = true;
+            }
+            revalidate();
+            repaint();
         }
     }
 }
